@@ -1,0 +1,339 @@
+Goal,EAM Query
+Display newly written files,event_simpleName=*Written | table timestamp ComputerName TargetFileName | sort - by timestamp
+Display newly written registry entries,event_simpleName=ASEP* | table timestamp ComputerName RegObjectName | sort - by timestamp
+History of network connections per process,"event_simpleName=ProcessRollup* FileName=<insert filename>, then use the drop-down next to the event to ""Find network events for this process""
+event_simpleName=ProcessRollup* SHA256HashData=<insert hash>, then use the drop-down next to the event to ""Find network events for this process"""
+History of domain names queried,"event_simpleName=DnsRequest | eval latest_time=strftime(_time, ""%m/%d/%y %I:%M%p"") | stats values(LocalAddressIP4) AS ""Local IP"" count as Count latest(latest_time) AS ""Latest Event"" by DomainName ComputerName | sort by Count"
+GeoIP connections (excluding RFC1918 & loopback),"event_simpleName=""NetworkConnectIP4"" (RemoteAddressIP4!=192.168.0.0/16 AND RemoteAddressIP4!=10.0.0.0/8 AND RemoteAddressIP4!=172.16.0.0/12 AND RemoteAddressIP4!=127.0.0.0/8) | dedup RemoteAddressIP4 ComputerName | iplocation RemoteAddressIP4 | table timestamp ComputerName RemoteAddressIP4 City Country | sort - by timestamp"
+Non-US network connections (excluding RFC1918 & loopback),"event_simpleName=""NetworkConnectIP4"" (RemoteAddressIP4!=192.168.0.0/16 AND RemoteAddressIP4!=10.0.0.0/8 AND RemoteAddressIP4!=172.16.0.0/12 AND RemoteAddressIP4!=127.0.0.0/8) | dedup RemoteAddressIP4 ComputerName | iplocation RemoteAddressIP4 | table timestamp ComputerName RemoteAddressIP4 City Country | where Country!=""United States"""
+Summarized non-US network connections (excluding RFC1918 & loopback),"event_simpleName=""NetworkConnectIP4"" (RemoteAddressIP4!=192.168.0.0/16 AND RemoteAddressIP4!=10.0.0.0/8 AND RemoteAddressIP4!=172.16.0.0/12 AND RemoteAddressIP4!=127.0.0.0/8) | iplocation RemoteAddressIP4 | stats count by Country | sort - by count"
+Display all file hash data across entire network,event_simpleName=ProcessRollup* OR event_simpleName=ImageHash | table FileName MD5HashData SHA1HashData SHA256HashData
+OS data for files,event_simpleName=ImageHash OR event_simpleName=ProcessRollup* OR event_simpleName=PEVersionInfo | table FileName event_platform
+"Extract signed information from binaries (It's ugly, but this will provide the information until Splunk creates a hex-->ASCII decoder)","It's ugly, but this will get you the information until Splunk creates a hex-->ASCII decoder: event_simpleName=PeVersionInfo | rex mode=sed field=VersionInfo ""s/([0-9A-Fa-f]{2})/%\1/g"" | rex mode=sed field=VersionInfo ""s/%[890ABCDEDFabcdef][\d\w]/-/g"" | eval decode=urldecode(VersionInfo) | table FileName decode"
+Locate all systems where a particular file exists (by filename - could substitute SHA256HashData=<insert hash> in place of the FileName argument if locating by hash is preferred),FileName=<insert file name> | stats count by ComputerName
+Show full command line parameters used to launch files,"event_simpleName=ProcessRollup* | table timestamp ComputerName FileName CommandLine
+event_simpleName=CommandHistory | table timestamp ComputerName ApplicationName CommandHistory"
+Show command history for specific binary with CLI (e.g. cmd.exe or powershell.exe),event_simpleName=CommandHistory* ApplicationName=<insert filename> | table timestamp ComputerName ApplicationName CommandHistory
+List user login count per user per computer,"event_simpleName=UserIdentity UserName!=none | stats count AS Logins by UserName, ComputerName | stats list(UserName) AS Usernames list(Logins) AS ""Login Count"" by ComputerName | rename ComputerName TO ""Computer Name"""
+List systems with the most unique user logins,event_simpleName=UserIdentity UserName!=none UserName=* | dedup ComputerName UserName | stats count by ComputerName | sort - by count
+List network connections or DNS queries,"event_simpleName=NetworkConnect* | rename LocalAddressIP4 AS ""Local IP"" LocalPort_decimal AS ""Local Port"" RemoteAddressIP4 AS ""Remote IP"" RemotePort_decimal AS ""Remote Port"" |table timestamp ComputerName ""Local IP"" ""Local Port"" ""Remote IP"" ""Remote Port""
+event_simpleName=DNSRequest | table timestamp ComputerName DomainName
+event_simpleName=DNSRequest | table timestamp ComputerName DomainName | dedup ComputerName DomainName"
+List network connections by user,"event_simpleName=NetworkConnect* | join TargetProcessId [search UserName!=*$ AND UserName!=""LOCAL SYSTEM"" AND UserName!=""LOCAL SERVICE""] | table timestamp ComputerName UserName LocalAddressIP4 RemoteAddressIP4"
+List all files that triggered VT detection,event_simpleName=VT | rename srcEventId as id | rename sha256 as SHA256HashData | join SHA256HashData [search FileName=*] | table timestamp ComputerName FileName SHA256HashData detectionCount | dedup ComputerName SHA256HashData | sort - by detectionCount
+List new processes that were not seen before (first seen in last 24 hours),"event_simpleName=ProcessRollup* | stats earliest(_time) as FirstRun by SHA256HashData | eval OneDayAgo=(now()-86400) | where FirstRun>OneDayAgo | fieldformat FirstRun=strftime(FirstRun, ""%m/%d/%y %H:%M:%S"") | fieldformat OneDayAgo=strftime(OneDayAgo, ""%m/%d/%y %H:%M:%S"") | join SHA256HashData [search FileName=* AND ComputerName=*] | table FirstRun ComputerName FileName SHA256HashData OneDayAgo"
+Find first event of a particular file or hash in the environment (note that time range needs to be specified),"event_simpleName=ProcessRollup* | stats earliest(_time) as FirstSeen by SHA256HashData | fieldformat FirstSeen=strftime(FirstSeen, ""%y/%m/%d %H:%M:%S"") | join SHA256HashData [search <insert hash>] | table FirstSeen ComputerName SHA256HashData FileName"
+Find last event of a particular file per computer (used filename in this example),"event_simpleName=ProcessRollup* FileName=GoogleUpdate.exe | stats latest(_time) AS LastSeen by SHA256HashData | fieldformat LastSeen=strftime(LastSeen, ""%m/%d/%y %I:%M%p"") | join SHA256HashData [search event_simpleName=ProcessRollup*] | table ComputerName LastSeen FileName SHA256HashData"
+Search for uncommon remote IP addresses,event_simpleName=NetworkConnect* | rare RemoteAddressIP4 | where percent < 10 | sort by percent asc
+Search for uncommon non-RFC1918 remote addresses,"event_simpleName=NetworkConnect* AND RemoteAddressIP4!=""10.0.0.0/8"" AND RemoteAddressIP4!=""172.16.0.0/12"" AND RemoteAddressIP4!=""192.168.0.0/16"" AND RemoteAddressIP4!=""127.0.0.1"" | rare RemoteAddressIP4 | where percent < 10 | sort by percent asc"
+"Search for instances of IIS, MS SqlServer, Apache Webserver, Nginx Webserver running as Local System","event_simpleName=""ProcessRollup2"" (FileName=w3wp.exe OR FileName=sqlservr.exe OR FileName=httpd.exe OR FileName=nginx.exe) UserName=""LOCAL SYSTEM"" | dedup aid | table ComputerName UserName ImageFileName CommandLine"
+Search for number of machines running any version of MS Word (by aid),(event_simpleName=ProcessRollup* OR event_simpleName=ImageHash) FileName=WinWord.exe | stats dc(aid)
+List locations of WinWord on specific systems (by ComputerName),(event_simpleName=ProcessRollup* OR event_simpleName=ImageHash) FileName=WinWord.exe | dedup ComputerName | table ComputerName ImageFileName
+List unusual (fewer than four across the organization) hashes and when they were first seen,"event_simpleName=""ProcessRollup2"" OR event_simpleName=ImageHash | stats earliest(timestamp) AS FirstSeen, dc(aid) AS Count by SHA256HashData | where Count<4 | sort - by FirstSeen"
+Search for instances of any process classified (/w Machine Learning) as cmd.exe that is not named cmd.exe,"name=""DynamicClassificationV1"" DynamicClassificationId_decimal=4 FileName!=cmd.exe"
+List usernames that have been used across a large number of computers (more than 4) and show the number of computers and when it was first seen,"name=UserIdentity | stats earliest(timestamp) AS FirstSeen, dc(aid) AS Count by UserName | where Count>4 | sort - by Count"
+"List PE Files that have been written to a small number of systems (less than four) and show the first time it was seen, the SHA256 hash value, the path of the written file, and the number of systems it's on (by aid)","event_simpleName=PeFileWritten | stats values(TargetFileName) AS ""File Path"", earliest(timestamp) AS FirstSeen, dc(aid) AS Count by SHA256HashData | where Count<4 | sort by Count"
+List AutoStart registry entry changes/updates that have only been seen on one system,"event_simpleName=Asep* | stats values(ComputerName) AS ""Computer Name"", earliest(timestamp) AS ""Date Seen"", dc(aid) AS Count by RegObjectName | where Count=1 | sort by ""Date Seen"""
+Search for uncommon file hashes per filename,"MD5HashData!="""" | rare MD5HashData by ImageFileName | where percent < 10 | sort by percent"
+List unusual (fewer than 10%) remote ports,"event_simpleName=NetworkConnect* RemotePort_decimal!="""" | rare RemotePort_decimal | rename RemotePort_decimal TO ""Remote Port"" | where percent < 10 | sort by percent"
+Find single ping (often used by adversary to stealthily check network connectivity),"ping.exe | search CommandLine=""*-n 1*"" | table timestamp ComputerName, aid, UserName, CommandLine"
+Show the breakdown stats on sensor version and OS version,"| savedsearch ""Sensor Stats"" | search Version!=none AND ""Agent Version""!=none | counttable Version ""Agent Version"""
+Show versions of Flash Player installed in environment,"event_simpleName=PeVersionInfo FileName=FlashPlayerPlugin* | rex mode=sed field=VersionInfo ""s/([0-9A-Fa-f]{2})/%\1/g"" | rex mode=sed field=VersionInfo ""s/%[890ABCDEDFabcdef][\d\w]//g"" | eval decode=urldecode(VersionInfo) | rex field=decode "".+FileDescriptionAdobe Flash Player (?<flashversion>.*)FileVersion.+"" | dedup ComputerName | rename flashversion AS ""Flash Version"" ComputerName AS ""Machine Name"" | stats list(""Machine Name"") by ""Flash Version"""
+Show versions of Adobe Acrobat Reader installed in environment,"event_simpleName=PeVersionInfo FileName=acrord*.exe | rex mode=sed field=VersionInfo ""s/([0-9A-Fa-f]{2})/%\1/g"" | rex mode=sed field=VersionInfo ""s/%[890ABCDEDFabcdef][\d\w]//g"" | eval decode=urldecode(VersionInfo) | rex field=decode "".+ProductNameAdobe Reader:ProductVersion(?<adobeversion>.*)BOriginalFilenameAcro.+"" | dedup ComputerName | rename adobeversion AS ""Acrobat Reader Version"" ComputerName AS ""Machine Name"" | stats list(""Machine Name"") by ""Acrobat Reader Version"""
+List all AIDs that are connected to more than one computer (and list the computers connected),"event_simpleName=AgentOnline | stats values(ComputerName) AS ""Computer Name"", dc(ComputerName) AS Count by aid | rename aid TO ""Agent ID"" | where Count >1 "
+"Option 1 to list files that were not seen an hour ago, but have been written to more than 5 systems in the last hour (summarized view)","event_simpleName=PEFileWritten TargetFileName!=*McAfee* earliest=-24h | stats values(FileName) AS ""File Name"", values(TargetFileName) AS ""Full Path"", values(ComputerName) AS ""Computer Names"", values(aid) AS ""Agent IDs"", earliest(_time) AS FirstSeen, dc(aid) AS Count by SHA256HashData | where Count>5 AND (FirstSeen>(now()-3600)) | fieldformat FirstSeen=strftime(FirstSeen, ""%m/%d/%y %H:%M:%S"") | sort - by Count"
+"Option 2 to list files that were not seen an hour ago, but have been written to more than 5 systems in the last hour (lists every instance)","event_simpleName=PeFileWritten cid=e79ede6f65cd4eca8e99fec43a7723cf SHA256HashData!=0000000000000000000000000000000000000000000000000000000000000000 earliest=-24h | eventstats earliest(_time) as firstseen by SHA256HashData | eval hourago=relative_time(now(),""-1h"") | where firstseen > hourago | eventstats dc(aid) as DistCount by SHA256HashData | where DistCount>5 | dedup SHA256HashData aid ContextProcessId_decimal | table TargetFileName SHA256HashData cid aid ContextProcessId_decimal | sort by SHA256HashData"
+"Option 1 to list files that were not seen a day ago, but have been written to more than 10 systems in the last day (summarized view)","event_simpleName=PEFileWritten TargetFileName!=*McAfee* earliest=-3d | stats values(FileName) AS ""File Name"", values(TargetFileName) AS ""Full Path"", values(ComputerName) AS ""Computer Names"", values(aid) AS ""Agent IDs"", earliest(_time) AS FirstSeen, dc(aid) AS Count by SHA256HashData | where Count>10 AND (FirstSeen>(now()-86400)) | fieldformat FirstSeen=strftime(FirstSeen, ""%m/%d/%y %H:%M:%S"") | sort - by Count"
+"Option 2 to list files that were not seen a day ago, but have been written to more than 10 systems in the last day (lists every instance)","event_simpleName=PeFileWritten cid=e79ede6f65cd4eca8e99fec43a7723cf SHA256HashData!=0000000000000000000000000000000000000000000000000000000000000000 earliest=-3d | eventstats earliest(_time) as firstseen by SHA256HashData | eval dayago=relative_time(now(),""-1d"") | where firstseen > dayago | eventstats dc(aid) as DistCount by SHA256HashData | where DistCount>9 | dedup SHA256HashData aid ContextProcessId_decimal | table TargetFileName SHA256HashData cid aid ContextProcessId_decimal | sort by SHA256HashData"
+List interesting fields that are associated with a specific detection,aid=<aid> TreeId=<treeid> | table timestamp event_simpleName ComputerName DetectName DetectDescription FileName ImageFileName TargetFileName DomainName
+List all processes and detections for a particular host,ComputerName=<computername> (DetectName=* OR event_simpleName=ProcessRollup2) | table timestamp event_simpleName name ComputerName DetectName CommandLine DetectDescription DetectScenario DetectSeverity | sort - by timestamp
+"List all detections, both weak and strong",PatternId_decimal=* | table timestamp ComputerName PatternId_decimal DetectName DetectScenario DetectDescription DetectSeverity
+Summary view of Source IP for API Detections,name=Event_ExternalApiEvent ExternalApiType=Event_DetectionSummaryEvent | stats count by OriginSourceIpAddress
+List of all Source IP Addresses for API Detections,name=Event_ExternalApiEvent ExternalApiType=Event_DetectionSummaryEvent | table timestamp name ExternalApiType OriginSourceIpAddress
+Find files that are spreading across an environment (24 hour period),"event_simpleName=PEFileWritten earliest=-24h | stats values(FileName) AS ""File Name"", values(TargetFileName) AS ""Full Path"", values(ComputerName) AS ""Computer Names"", values(aid) AS ""Agent IDs"", earliest(_time) AS FirstSeen, dc(aid) AS Count by SHA256HashData | where Count>4 AND (FirstSeen>(now()-3600)) | fieldformat FirstSeen=strftime(FirstSeen, ""%m/%d/%y %H:%M:%S"") | sort - by Count"
+"Same as above (find spreading files), but 1-hour period and not specifying that the file has to be ""new""","event_simpleName=PEFileWritten earliest=-1h | stats values(FileName) AS ""File Name"", values(TargetFileName) AS ""Full Path"", values(ComputerName) AS ""Computer Names"", values(aid) AS ""Agent IDs"", dc(aid) AS Count by SHA256HashData | where Count>2 | sort - by Count"
+Show the total data being consumed by Falcon Host (events being sent) per hour,"esize=* earliest=-12h | stats sum(esize) AS Bytes by date_hour | fieldformat Bytes = tostring(Bytes, ""commas"")"
+"Table view to append to ""find associated events"" query",| table timestamp ComputerName event_simpleName PatternId_decimal DetectName ImageFileName CommandLine TargetFileName DomainName LocalAddressIP4 LocalPort_decimal RemoteAddressIP4 RemotePort_decimal
+List all network connections by process over the last 24 hours,"event_simpleName=NetworkConnectIP4 earliest=-24h | rename ContextProcessId AS TargetProcessId | join TargetProcessId [search event_simpleName=ProcessRollup2 earliest=-24h] | stats values(TargetProcessId), values(ComputerName), values(FileName), Values(RemoteAddressIP4), values(RemotePort_decimal), dc(RemoteAddressIP4) by TargetProcessId"
+List all DNS requests by process over the last 24 hours,"event_simpleName=DnsRequest earliest=-24h | rename ContextProcessId AS TargetProcessId | join TargetProcessId [search event_simpleName=ProcessRollup2 earliest=-24h] | stats values(TargetProcessId), values(ComputerName), values(FileName), Values(DomainName), dc(DomainName) by TargetProcessId"
+Alternate method to list all DNS requests by process,"event_simpleName=""ProcessRollup2"" ComputerName=<computername> FileName=""*.exe"" | rename TargetProcessId as ContextProcessId | join ContextProcessId [search event_simpleName=DnsRequest DomainName=""*.*"" ComputerName=<computername> | stats values(DomainName) AS DomainName by ContextProcessId ] | table timestamp RawProcessId_decimal ContextProcessId DomainName ComputerName UserName FileName MD5HashData CommandLine aid | rename RawProcessId_decimal AS PID, MD5HashData AS MD5"
+Alternate method to list all network connections by process (excluding 192.168 and 127),"event_simpleName=""ProcessRollup2"" ComputerName=LAMB FileName=""*.exe"" | rename TargetProcessId as ContextProcessId | join ContextProcessId [search  event_simpleName=NetworkConnectIP4 RemoteAddressIP4!=192.168.0.0/16 RemoteAddressIP4!=127.0.0.0/8 ComputerName=LAMB | stats values(RemoteAddressIP4) AS ""Remote IP Address"" by ContextProcessId ] | table timestamp ComputerName FileName RawProcessId_decimal ContextProcessId ""Remote IP Address"" UserName MD5HashData CommandLine aid | rename RawProcessId_decimal AS PID, MD5HashData AS MD5"
+View all detection patterns,|inputlookup detect_patterns
+View all aids,|inputlookup aid_master
+,|inputlookup winosversion_lookup
+Append lookup information to your result (make sure you add new column in table to reflect added field),"| lookup aid_master ComputerName output Version
+| where Version=""Windows 7""
+| table ComputerName, FileVersion, UserName, Version, _time "
+,|inputlookup usersid_username
+,|inputlookup recon_apps
+,|inputlookup producttype_lookup
+,|inputlookup osxversion_lookup
+,|inputlookup logontype_lookup
+,|inputlookup localaddressip4_lookup
+View all macros,"| rest splunk_server=local /servicesNS/-/-/admin/macros 
+| table title, args, eai:acl.app, definition"
+View all lookups,"| rest /servicesNS/-/-/data/props/lookups
+| table title, args, eai:acl.app, definition"
+View all saved searches,"| rest /servicesNS/-/-/saved/searches splunk_server=local
+|  table title search"
+View all sourcetypes,| metadata type=sourcetypes index=* OR index=_*
+AESP EVENT_SIMPLENAME EVENTS IN FALCON - Windows ASEPs,AsepKeyUpdate and AsepValueUpdate
+LOOK AT ALL SCHEDULED TASK REGISTRATIONS,earliest=-3d event_simpleName=ScheduledTaskRegistered |  table _time ComputerName TaskName TaskAuthor TaskExecCommand TaskExecArguments TaskXml
+LOOK AT ALL USER ACCOUNTS CREATED,earliest=-30d event_simpleName=UserAccountCreated | table _time ClientComputerName ComputerName UserName UserRid
+Script Control,earliest=-30d event_simpleName=ScriptControl* | stats values(ScriptContentName) values(SHA256HashData) count by ComputerName
+More Script Control,earliest=-30d event_simpleName=ScriptControl* | table _time ComputerName aid ScriptContentName SHA256HashData ScriptContent
+USB Device Control,"event_simpleName=DcUsbDeviceConnected | eval Time=strftime(timestamp/ 1000, ""%Y-%m-%d %H:%M:%S"") | rename ComputerName AS Endpoint, DevicePropertyClassName AS ""Connection Type"", DeviceManufacturer AS Manufacturer, DeviceProduct AS ""Product Name"", DevicePropertyDeviceDescription AS Description, DevicePropertyClassGuid_readable AS GUID, Time As ""Time Connected"" | stats list(""Time Connected"") by Endpoint ""Connection Type"" Manufacturer ""Product Name"" Description GUID"
+,
+,
+https://www.splunk.com/pdfs/solution-guides/splunk-quick-reference-guide.pdf,
+https://falcon.crowdstrike.com/support/documentation/26/events-data-dictionary,
+,
+Computers with bad file,"(SHA256HashData=07c44729e2c570b37db695323249474831f5861d45318bf49ccf5d2f5c8ea1cd)
+| table ComputerName LocalAddressIP4 
+|  dedup ComputerName "
+Connections charted on map,"event_simpleName=""NetworkConnectIP4"" (RemoteAddressIP4!=192.168.0.0/16 AND RemoteAddressIP4!=10.0.0.0/8 AND RemoteAddressIP4!=172.16.0.0/12 AND RemoteAddressIP4!=127.0.0.0/8 AND RemoteAddressIP4!=9.0.0.0/8) | dedup RemoteAddressIP4 ComputerName | iplocation RemoteAddressIP4 | table timestamp ComputerName RemoteAddressIP4 City Country 
+| chart count over RemoteAddressIP4 | iplocation RemoteAddressIP4 | geostats count by Country"
+(Some*) Services that shouldn't be exposed to the internet,eventtype=eam AND (RPort=137 OR RPort=3389 OR RPort=445 OR RPort=138 OR RPort=139) AND (RemoteAddressIP4!=192.168.0.0/16 AND RemoteAddressIP4!=10.0.0.0/8 AND RemoteAddressIP4!=172.16.0.0/12 AND RemoteAddressIP4!=127.0.0.0/8 AND RemoteAddressIP4!=9.0.0.0/8) AND RemoteIP != LocalIP | table ComputerName LocalIP LPort RemoteIP RPort
+Query versions of App,"index=discover_summary ProductName=""Microsoft Office*"" (FileName=""EXCEL.EXE"" OR FileName=""WINWORD.EXE"" OR FileName=""OUTLOOK.EXE"")
+| dedup ComputerName 
+| table ComputerName, FileVersion, UserName, _time
+| sort FileVersion"
+Check for Registry Changes,"(event_simpleName=AsepKeyUpdate OR event_simpleName=AsepValueUpdate) ComputerName=* RegOperationType_decimal IN (1,3,6)
+| eval orig_event_SimpleName=event_simpleName
+| eval TargetProcessId_decimal=ContextProcessId_decimal
+| join TargetProcessId_decimal
+   [ search ComputerName=* (event_simpleName=*processrollup* OR event_simpleName=CommandHistory) ]
+| rename AsepClass_decimal as AsepClass AsepValueType_decimal as AsepValueType AsepFlags_decimal as AsepFlagsType RegOperationType_decimal as RegOperationType
+| lookup asepclass AsepClass OUTPUT AsepClassName
+| lookup asepvalue AsepValueType OUTPUT AsepValueName
+| lookup regoperation RegOperationType OUTPUT RegOperationName
+| rex field=CommandLine ""(?<CommandLineExe>^\""?.*?\.\w{3}\""?)""
+| eval CommandLineExe = trim(replace(CommandLineExe, ""\"""", """"))
+| rex field=CommandLine ""(?<CommandLineArgs>\/.*)""
+| rex field=CommandLine ""\.\w{3}\""?\s(?<CommandLineArgs>.*)""
+| table _time, ComputerName, orig_event_SimpleName, event_simpleName, RegOperationName, RegObjectName, RegValueName, RegStringValue, RegObjectName, AsepClassName, AsepValueName, AsepFlagsType, CommandLine, CommandLineExe, CommandLineArgs, FileName, ImageFileName, MD5HashData, SHA256HashData, ParentProcessId_decimal, ContextProcessId_decimal, TargetProcessId_decimal, RegType_decimal, AsepFlags_decimal, aid, UserName
+| sort _time"
+DNS query associated with executable running (possible process injection),"aid=* event_simpleName=""DnsRequest"" 
+| rename ContextProcessId as TargetProcessId 
+| join TargetProcessId [search aid=* event_simpleName=""ProcessRollup2"" ImageFileName=""*notepad.exe""]
+| eval Time=strftime(_time,""%m/%d/%Y %H:%M:%S %p"")
+| table ComputerName Time ImageFileName DomainName CommandLine"
+Powershell with some Bypass,event_simpleName=ProcessRollup2 FileName=powershell.exe (CommandLine=* -nopr* OR CommandLine=* -w* OR CommandLine=* -exec*) | table ComputerName UserName FileName CommandLine
+Powershell with all Bypass,event_simpleName=ProcessRollup2 FileName=powershell.exe (CommandLine=* -nopr* AND CommandLine=* -w* AND CommandLine=* -exec*) | table ComputerName UserName FileName CommandLine
+Inappropriate SYSTEM privilege use,"event_simpleName=""ProcessRollup2"" (FileName=w3wp.exe OR FileName=sqlservr.exe OR FileName=httpd.exe OR FileName=nginx.exe) UserName=""LOCAL SYSTEM"" | dedup aid | table ComputerName UserName ImageFileName CommandLine"
+Running from recycle bin folder,ImageFileName=*$Recycle.Bin* event_simpleName=*ProcessRollup* | stats values(name) values(MD5HashData) values(ComputerName) values(ImageFileName) values(CommandLine) count by aid
+Suspicious URLs (50 last in result set),event_simpleName=SuspiciousDnsRequest | stats values(ComputerName) count by DomainName | tail 50
+Bits Transfers,event_simpleName=*ProcessRollup* FileName=bitsadmin.exe (CommandLine=*/Transfer* OR CommandLine=*/Addfile*) | dedup CommandLine | table _time aid ComputerName UserName ImageFileName CommandLine TargetFileName MD5HashData SHA256HashData | sort -_time
+Powershell Downloads,"(""powershell"" AND (""DownloadString("" OR ""invoke-webrequest"" OR ""Invoke-shell""OR ""iex"" OR ""Net.WebClient"")) AND CommandLine=* AND NOT ( localhost OR swg-devops OR ""chocolatey.org"" OR .ibm.com OR http://169.254.169.254/latest/dynamic/instance-identity/document OR *SEP_* OR *Sylink* OR *TreeSizeFree* OR *ClientSideClonePrepTool.exe* OR *Crowdstrike* OR *qatemrepo.qa.local* OR *WindowsSensor_* OR *wincollect*)
+| stats values(CommandLine) by ComputerName"
+Executables running from user temp,"(event_simpleName=*ProcessRollup*) AND (ImageFileName=""*\\AppData\\*"" OR ImageFileName=""*\\Desktop\\*"" OR ImageFileName=""*\\AppData\\Local\\*"" OR ImageFileName=""*\\AppData\\Local\\Temp\\*"" OR ImageFileName=""*\\AppData\\Roaming\\*"") | regex ImageFileName="".*\\\\Desktop\\\\\w+\.exe|.*\\\\AppData\\\\\w+\.exe|.*\\\\AppData\\\\Local\\\\\w+.exe|.*\\\\AppData\\\\Local\\\\Temp\\\\\w+.exe|.*\\\\AppData\\\\Roaming\\\\\w+.exe"" |table ComputerName UserName ImageFileName FileName SHA256HashData"
+Files executing from browser cache,"event_simpleName=*ProcessRollup* AND (ImageFileName=""*\\AppData\\Local\\Microsoft\\Windows\\Temporary Internet Files\\*"" OR ImageFileName=""*\\AppData\\Local\\Mozilla\\Firefox\\Profiles*"" OR ImageFileName=""*\\AppData\\Local\\Google\\Chrome\\*"" OR ImageFileName=""*\\Downloads\\*"") | regex ImageFileName="".*\\\\AppData\\\\Local\\\\Microsoft\\\\Windows\\\\Temporary.Internet.Files\\\\\w+\.exe|.*\\\\AppData\\\\Local\\\\Mozilla\\\\Firefox\\\\Profiles\\\\\w+\.exe|.*\\\\AppData\\\\Local\\\\Google\\\\Chrome\\\\\w+\.exe|.*\\\\Downloads\\\\\w+\.exe"" | table ComputerName UserName ImageFileName FileName SHA256HashData"
+Services running from somewhere other than System32,"event_simpleName=ServiceStarted ImageFileName!=""*\\System32\\*"" | stats values(ServiceDisplayName) values(ImageFileName) values(CommandLine) values(ComputerName) values(RemoteAddressIP4) values(RemoteAddressIP6) count by aid"
+Hunting for named service,event_simpleName=ServiceStarted ServiceDisplayName=<change me> | stats values(aid) values(ServiceDisplayName) values(ImageFileName) values(CommandLine) count by ComputerName
+Look for rare services in your environment,event_simpleName=ServiceStarted (ServiceDisplayName!=BcastDVRUserService* AND ServiceDisplayName!=BluetoothUserService* AND ServiceDisplayName!=DevicePickerUserSvc* AND ServiceDisplayName!=DevicesFlowUserSvc* AND ServiceDisplayName!=IBM*) | rare 50 ServiceDisplayName
+Documents opened by Office,"event_simpleName=*ProcessRollup* earliest=-60d latest=now CommandLine=*content.outlook* FileName=winword.exe OR Filename=excel.exe OR POWERPNT.exe | eval splitter=split(CommandLine,""Outlook\\"") | eval ShortFile=mvindex(splitter,-1) | table timestamp aid TargetProcessId_decimal ComputerName ShortFile CommandLine | sort – timestamp"
+Web locations visited from outlook,event_simpleName=*ProcessRollup* earliest=-60d latest=now FileName=outlook.exe | dedup aid TargetProcessId_decimal | rename FileName as Parent | rename CommandLine as ParentCmd | table aid TargetProcessId_decimal Parent ParentCmd | join max=0 aid TargetProcessId_decimal [search name=ProcessRollup* FileName=chrome.exe OR FileName=firefox.exe OR FileName=iexplore.exe | rename ParentProcessId as TargetProcessId_decimal | rename MD5HashData as MD5 | rename FilePath as ChildPath | dedup aid TargetProcessId_decimal MD5 | fields aid TargetProcessId_decimal FileName CommandLine] | table Parent ParentCmd FileName CommandLine aid
+Users added to admin,"event_simpleName=UserAccountAddedToGroup DomainSid=""S-1-5-21-*"" | stats dc(ComputerName) AS ""Host Count"", values(ComputerName) AS ""Host Name"" by DomainSid, UserRid | eval UserRid_dec=tonumber(UserRid, 16) | fillnull UserRid | eval UserSid_readable=DomainSid.""-"".UserRid_dec | lookup usersid_username.csv UserSid_readable OUTPUT UserName | rename UserSid_readable AS UserSid, UserName AS ""User Name"" | table UserSid, ""User Name"", ""Host Count"", ""Host Name"""
+Firewall rules activated by host,event_simpleName=FirewallSetRule | stats values(LocalAddressIP4) values(RemoteIP) values(FirewallRule) by ComputerName
+More firewall activity by host,"event_simpleName=FirewallSetRule | rex field=FirewallRule ""App=(?<App>(.*?))\|"" | rex field=FirewallRule ""Active=(?<Active>(.*?))\|"" | rex field=FirewallRule ""Profile=(?<Profile>(.*?))\|"" | rex field=FirewallRule ""Protocol=(?<Protocol>(.*?))\|"" | rex field=FirewallRule ""Dir=(?<Dir>(.*?))\|"" | rex field=FirewallRule ""Desc=(?<Desc>(.*?))\|"" | rex field=FirewallRule ""Name=(?<Name>(.*?))\|"" | table ComputerName App Name Desc Active Dir Profile RemoteAddressIP4 RemoteAddressIP6 FirewallRule"
+Network activity in old src/port - dest/port format,"event_simpleName=NetworkConnect* (RemoteAddressIP4!=192.168.0.0/16 AND RemoteAddressIP4!=10.0.0.0/8 AND RemoteAddressIP4!=172.16.0.0/12 AND RemoteAddressIP4!=127.0.0.0/8)
+| table ComputerName aid LocalAddressIP4 LocalPort_decimal RemoteAddressIP4 RemotePort_decimal"
+Summary of network activity by host,"event_simpleName=NetworkConnect* (RemoteAddressIP4!=192.168.0.0/16 AND RemoteAddressIP4!=10.0.0.0/8 AND RemoteAddressIP4!=172.16.0.0/12 AND RemoteAddressIP4!=127.0.0.0/8)
+| stats values(LocalAddressIP4) values(RemoteAddressIP4) values(RemotePort_decimal) by ComputerName"
+RDP activity,"event_simpleName=UserIdentity LogonType_decimal=10 | eval Time=strftime(_time,""%m/%d/%Y %H:%M:%S %p"")| table Time ComputerName UserName UserPrincipal LogonServer"
+Utility query component to add context,"| rename ContextProcessId as TargetProcessId 
+| join TargetProcessId [search aid=* event_simpleName=""ProcessRollup2"" ]
+| table ComputerName _time ImageFileName CommandLine"
+Active Sensors ,"| inputlookup aid_master | search cid=* | where now()-Time<86400 | eval ProductType=case(ProductType = ""1"",""Workstation"", ProductType = ""2"",""Domain Controller"", ProductType = ""3"",""Server"", event_platform = ""Mac"", ""Workstation"") | eval Last_Seen_UTC=Time | lookup managedassets.csv aid OUTPUT LocalAddressIP4 | table ComputerName LocalAddressIP4 aip event_platform Version ProductType SystemManufacturer SystemProductName  MachineDomain OU SiteName AgentVersion Last_Seen_UTC aid | rename SystemManufacturer as Manufacturer SystemProductName as Model AgentVersion as ""Agent Version"" MachineDomain as Domain aip as ""External IP"" LocalAddressIP4 as ""Local IP"" event_platform as OS, ComputerName AS ""Host Name"", ProductType AS ""Device Type"", SiteName AS ""Site Name"", Last_Seen_UTC AS ""Last Seen (UTC)"" | convert ctime(""Last Seen (UTC)"")"
+Basic Info about a given system,"| inputlookup aid_master | search ComputerName=<System Name>
+| where now()-Time<86400 
+| eval ProductType=case(ProductType = ""1"",""Workstation"", ProductType = ""2"",""Domain Controller"", ProductType = ""3"",""Server"") 
+| eval Last_Seen_UTC=Time
+| eval event_platform=case(event_platform = ""Win"",""Windows"", event_platform = ""Lin"",""Linux"", event_platform = ""Mac"",""OSX"")
+| lookup managedassets.csv aid OUTPUT LocalAddressIP4 
+| table ComputerName LocalAddressIP4 event_platform Version ProductType SystemManufacturer SystemProductName AgentVersion Last_Seen_UTC
+| rename SystemManufacturer as Manufacturer SystemProductName as Model AgentVersion as ""Agent Version"" MachineDomain as Domain aip as ""External IP"" LocalAddressIP4 as ""Local IP"" event_platform as OS, ComputerName AS ""Host Name"", ProductType AS ""Device Type"", SiteName AS ""Site Name"", Last_Seen_UTC AS ""Last Seen (UTC)"" 
+| convert ctime(""Last Seen (UTC)"")"
+Hunting for HTA execution CVE-2017-0199,"mshta.exe AND (""*.run*"" OR (""*http*"" NOT *localhost*)) AND NOT CommandLine=*IBM*
+|  table ComputerName CommandLine ImageFileName _time"
+Honed Query (Strange Service from Location),"event_simpleName=ServiceStarted ImageFileName!=*\\System32\\* AND NOT ( CommandLine=C:\\windows\\SysWOW64\\* OR CommandLine=*GoogleUpdate.exe* OR CommandLine=*BigFix* OR CommandLine=*PSEXESVC.exe* OR CommandLine=*\\OpenSSH-Win64\\sshd.exe* OR CommandLine=*RESTAPI.exe* OR CommandLine=*symantec* OR CommandLine=*VeeamGuestHelper.exe* OR CommandLine=*IBM* OR CommandLine=*mscorsvw.exe* OR CommandLine=*SUService.exe* OR CommandLine=*clussvc.exe* OR CommandLine=*MsMpEng.exe* OR CommandLine=*TrustedInstaller.exe* OR CommandLine=*NisSrv.exe* OR CommandLine=*c4ebreg.exe* OR CommandLine=*OSPPSVC.EXE* OR CommandLine=*jenkins* OR CommandLine=*HOTL* OR CommandLine=*Tivoli* OR CommandLine=*mcshield.exe* OR CommandLine=*policyHost.exe* OR CommandLine=*maintenanceservice.exe* OR CommandLine=*OfficeClickToRun.exe* OR CommandLine=*check_mk\\check_mk_agent.exe* OR CommandLine=*wmpnetwk.exe* OR CommandLine=*amazon* OR CommandLine=*openssh* OR CommandLine=*PresentationFontCache.exe* OR CommandLine=*armsvc.exe* OR CommandLine=*cogbootstrapservice.exe* OR CommandLine=*Taskmaster* OR CommandLine=*Lenovo* OR CommandLine=*MaaS360* OR CommandLine=*StandardCollector.Service.exe* OR CommandLine=*McAfee* OR CommandLine=*apache* OR CommandLine=*webex* OR CommandLine=*microsoft* OR CommandLine=*VGAuthService.exe* OR CommandLine=*vmware* OR CommandLine=*FNPLicensingService.exe* OR CommandLine=*jhi_service.exe* )
+| stats values(ImageFileName) by ComputerName, CommandLine, ServiceDisplayName
+| dedup ComputerName"
+Web Execution direct to shell,"""*\:\/\/* | *sh""
+| regex CommandLine="".*(http.?).*\|\ ?[a-z]{0,3}sh(?<!\|ssh|\| ssh)""
+| table ComputerName CommandLine _time"
+Linux fileless execution,"FilePath=*memfd*
+| stats values(FilePath) by ComputerName, CommandLine, ImageFilePath, _time"
+HTA execution on Windows,"mshta.exe AND (""*.run*"" OR (""*http*"" NOT *localhost*)) AND NOT CommandLine=*IBM*
+|  table ComputerName CommandLine ImageFileName _time"
+What's making the DNS requests on a given machine,"aid=<matching agent iD> event_simpleName=DNSRequest 
+| rename ContextProcessId as TargetProcessId 
+| join TargetProcessId [search aid=<matching agent ID> event_simpleName=""ProcessRollup*"" ImageFileName=""*"" NOT CommandLine=*iptables-restore*] 
+| table ComputerName _time ImageFileName DomainName CommandLine CommandHistory"
+Current version of Chrome affected by CVE-2019-5786 with OS version and Architecture,"index=discover_summary ProductName=""Google*"" (FileName=""chrome.exe"") 
+| dedup ComputerName 
+| sort FileVersion 
+| where FileVersion < ""72.0.3626.121""
+| lookup aid_master ComputerName output Version City Country
+| where Version=""Windows 7""
+| join ComputerName [search event_simpleName=OsVersionInfo]
+| replace 4 WITH ""32 Bit"" IN PointerSize_decimal
+| replace 8 WITH ""64 Bit"" IN PointerSize_decimal
+| rename PointerSize_decimal AS ""OS Bit""
+| table ComputerName, FileVersion, UserName, Version, ""OS Bit"", City, Country, _time "
+Total asset view,"| inputlookup aid_master
+| where now()-Time<86400 
+| eval ProductType=case(ProductType = ""1"",""Workstation"", ProductType = ""2"",""Domain Controller"", ProductType = ""3"",""Server"", 1=1, ""Server"") 
+| eval Last_Seen_UTC=Time
+| eval event_platform=case(event_platform = ""Win"",""Windows"", event_platform = ""Lin"",""Linux"", event_platform = ""Mac"",""OSX"")
+| lookup managedassets.csv aid OUTPUT LocalAddressIP4 
+| table ComputerName LocalAddressIP4 aip event_platform Version ProductType SystemManufacturer SystemProductName AgentVersion Last_Seen_UTC
+| rename SystemManufacturer as Manufacturer SystemProductName as Model AgentVersion as ""Agent Version"" MachineDomain as Domain aip as ""External IP"" LocalAddressIP4 as ""Local IP"" api as ""External IP"" event_platform as OS, ComputerName AS ""Host Name"", ProductType AS ""Device Type"", SiteName AS ""Site Name"", Last_Seen_UTC AS ""Last Seen (UTC)"" 
+| convert ctime(""Last Seen (UTC)"")"
+Quick network activity from range,"RemoteAddressIP4=9.23.193.235/27
+| lookup aid_master ComputerName output MachineDomain
+| table ComputerName, MachineDomain, LocalAddressIP4, LPort, RemoteAddressIP4, RPort, _time"
+Quick requests from host,"aid=eb372c6aec0142c5767eff54a898a0e4 event_simpleName=DNSRequest 
+| rename ContextProcessId as TargetProcessId 
+| join TargetProcessId [search aid=eb372c6aec0142c5767eff54a898a0e4	 event_simpleName=""ProcessRollup*"" ImageFileName=""*"" NOT CommandLine=*iptables-restore*] 
+| table ComputerName _time ImageFileName DomainName CommandLine CommandHistory"
+Beta- Query to show child processes from filess launch,"ImageFileName=""/memfd:runc_cloned:/proc/self/exe (deleted)""
+| rename FileName as Parent 
+| rename CommandLine as ParentCmd 
+| rename TargetProcessId_decimal as ParentProcessId_decimal
+| table ComputerName Parent ParentCmd ImageFileName _time
+| join type=outer max=0 ParentProcessId_decimal [search event_simpleName=ProcessRollup* | rename MD5HashData as MD5 | fields CommandLine MD5] "
+Query for systems clearing Windows EventLogs,"(wevtutil.exe AND "" cl "") OR Clear-EventLog
+|  join type=outer max 0 
+| table ComputerName CommandLine _time
+|  dedup ComputerName"
+Failed Logins per Machine and Per Account,"event_simpleName=UserLogonFailed
+| stats count by UserName, ComputerName
+| eventstats sum(count) As ""Total Count"" by ComputerName
+| sort - ""Total Count"" ComputerName count "
+Direct Socket Connections,"/dev/tcp/
+| regex CommandLine=""\b(?!10\.|9\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}\b""
+| rename _time AS Time
+| stats values(CommandLine) by ComputerName"
+Encoded Powershell,"""powershell"" AND (""System.Diagnostics.ProcessStartInfo"" OR ""[Convert]::FromBase64String"" OR ""-EncodedCommand"" OR "".decode('base64')"" OR ""base64 --decode"" OR "".decode64("")
+| table CommandLine
+| dedup CommandLine"
+Encoded Powershell - Tuned for Environment,"CommandLine=*powershell* AND (""System.Diagnostics.ProcessStartInfo"" OR ""[Convert]::FromBase64String"" OR ""-EncodedCommand"" OR "".decode('base64')"" OR ""base64 --decode"" OR "".decode64("") AND NOT (JgBjAGgAYwBwAC4AYwBv* OR UABvAHcAZQByAFMAaA* OR CgAgACAAIAAgACYAYwB* OR WwBDAG8AbgBzAG8AbABlAF0AOgA* OR IAAgACAAIAAgACAAIAAgACAA* OR UwBlAHQALQBTAHQAcgBpAGMAd* OR YgBlAGcAaQBuACAAewAKACQAcABhAHQ* OR CgAgACAAIAAgACMAIABo* OR KABHAGUAdAAtAFcAbQBpAE8AY* OR aQBmACgAIAAoAGcAZQB0AC0A* OR CgAgACAAIAAgAHQAcgBhAHAAI* OR dwBoAG8AYQBtAGkA OR IABJAG0AcABvAHIAdAAtAE0A* )
+| table ComputerName, CommandLine
+| dedup ComputerName "
+Event Search Query to Find Windows BSoD Crashes and Mac Kernel Panics,"earliest=-7d latest=now event_simpleName=CrashNotification 
+| eval Time=strftime(timestamp/1000, ""%Y-%m-%d %H:%M:%S"") 
+| stats list(Time) by ComputerName, aid, event_platform, ConfigBuild, CrashDumpFilePath 
+| rename list(Time) AS ""Crash Times (UTC)"", ComputerName AS ""Hostname"", aid AS ""Sensor AID"", event_platform AS ""OS Platform"", ConfigBuild AS ""Sensor Build"", CrashDumpFilePath AS ""Path to Dump File"""
+For Windows BSoD crashes,"earliest=-7d latest=now event_simpleName=CrashNotification event_platform=Win
+| eval Time=strftime(timestamp/1000, ""%Y-%m-%d %H:%M:%S"") 
+| stats list(Time) by ComputerName, aid, event_platform, ConfigBuild, CrashDumpFilePath 
+| rename list(Time) AS ""Crash Times (UTC)"", ComputerName AS ""Hostname"", aid AS ""Sensor AID"", event_platform AS ""OS Platform"", ConfigBuild AS ""Sensor Build"", CrashDumpFilePath AS ""Path to Dump File"""
+For Mac kernel panic crashes,"earliest=-7d latest=now event_simpleName=CrashNotification event_platform=Mac
+| eval Time=strftime(timestamp/1000, ""%Y-%m-%d %H:%M:%S"") 
+| stats list(Time) by ComputerName, aid, event_platform, ConfigBuild, CrashDumpFilePath 
+| rename list(Time) AS ""Crash Times (UTC)"", ComputerName AS ""Hostname"", aid AS ""Sensor AID"", event_platform AS ""OS Platform"", ConfigBuild AS ""Sensor Build"", CrashDumpFilePath AS ""Path to Dump File"""
+Hosts in RFM state,"event_simpleName=SensorHeartbeat SensorStateBitMap_decimal=2 ConfigIDBuild_decimal>=5906 earliest=-1d latest=now
+| table timestamp ComputerName aid ConfigIDBuild_decimal
+| dedup aid
+| sort -timestamp
+| eval timestamp=timestamp/1000
+| convert ctime(timestamp)
+| rename timestamp as ""Timestamp (UTC)"", ComputerName as ""Hostname"", aid as ""Sensor ID"", ConfigIDBuild_decimal as ""Agent Build"""
+Looking For Latest OSFM Certification,"event_simpleName=LFODownloadConfirmation CompletionEventId=Event_OsfmDownloadCompleteV1 FileName=Osfm-*.bin earliest=-1d latest=now
+| table timestamp ComputerName aid FileName ConfigBuild
+| dedup aid
+| sort -timestamp
+| eval timestamp=timestamp/1000
+| convert ctime(timestamp)
+| rename timestamp as ""Timestamp (UTC)"", ComputerName as ""Hostname"", aid as ""Sensor ID"", FileName as ""OSFM Filename"", ConfigBuild as ""Agent Build"""
+Look for processes and users starting powershell,"FileName=""powershell.exe"" 
+|  dedup CommandLine
+| rename CommandLine as ChildCommandLine
+| join    ParentProcessId_decimal 
+    [search event_simpleName=ProcessRollup*]
+| table ComputerName UserName FileName CommandLine ChildCommandLine "
+look for processes started by powershell excluding specific processes and specific powershell command patterns,"event_simpleName=ProcessRollup* AND NOT FileName IN (""gpupdate.exe"",""winmgmt.exe"",""sc.exe"",""attrib.exe"",""reg.exe"",""schtasks.exe"",""wermgr.exe"",""msbuild.exe"",""csc.exe"")
+| dedup CommandLine
+| rename ParentProcessId_decimal as TargetProcessId_decimal
+| rename CommandLine as ChildCommandLine
+| rename FileName as ChildFileName
+| join  TargetProcessId_decimal    
+    [search event_simpleName=ProcessRollup* FileName=""powershell.exe"" AND NOT CommandLine IN (""*sccm*"",""*gpclient*"")]
+| table ComputerName FileName CommandLine ChildFileName ChildCommandLine"
+DEV -> prod logins,"event_simpleName IN (""UserLogon*"", ""Login*"") AND UserName IN (""*svc*"") AND ComputerName IN (""*prd*"",""*PROD*"")
+| regex UserName="".*[sS][vV][cC][dDtT][Ee][vVsS].*"" 
+|  table _time UserName ComputerName AuthenticationId_decimal AuthenticationPackage LocalAddressIP4 LogonDomain LogonServer LogonTime_decimal LogonType_decimal MAC PasswordLastSet_decimal PrivilegesBitmask_decimal RemoteAccount_decimal   UserIsAdmin_decimal   UserPrincipal UserSid_readable "
+above for any machine,"event_simpleName IN (""UserLogon*"", ""Login*"") AND UserName IN (""*svc*"") 
+| regex UserName="".*[sS][vV][cC][dDtT][Ee][vVsS].*"" 
+|  table _time UserName ComputerName AuthenticationId_decimal AuthenticationPackage          LocalAddressIP4 LogonDomain LogonServer LogonTime_decimal LogonType_decimal MAC PasswordLastSet_decimal PrivilegesBitmask_decimal RemoteAccount_decimal   UserIsAdmin_decimal   UserPrincipal UserSid_readable 
+
+event_simpleName IN (""UserLogon*"", ""Login*"") AND UserName IN (""*svcdev*"",""*svctes*"",""*svcstg*"") AND ComputerName IN (""*prd*"",""*prod*"")
+|  table _time UserName ComputerName AuthenticationId_decimal AuthenticationPackage          LocalAddressIP4 LogonDomain LogonServer LogonTime_decimal LogonType_decimal MAC PasswordLastSet_decimal PrivilegesBitmask_decimal RemoteAccount_decimal   UserIsAdmin_decimal   UserPrincipal UserSid_readable "
+lnk exeuction from external drives hunt,"event_simpleName=ProcessRollup* AND LinkName=""*.lnk"" AND NOT FileName IN (""WINWORD.EXE"",""EXCEL.EXE"",""MSACCESS.EXE"",""AcroRd32.exe"")| regex LinkName=""[d-zD-Z]:\\\[\w\d -_]*\\.lnk""
+| table _time ComputerName LinkName FileName CommandLine
+"
+lnk on removable drive root,"LinkName=""*lnk""
+| regex LinkName=""[d-zD-Z]:\\\[\\w\\d -_]*\\.lnk"""
+usb enumerate,| table _time ComputerName aip event_simpleName DeviceDescriptorSetHash    DeviceDescriptorUniqueIdentifier    DeviceProtocol_decimal       DeviceUsbClass_decimal    DeviceUsbSubclass_decimal MAC     LocalAddressIP4
+CommandHistory,"event_simpleName=CommandHistory
+| eval Commands=split(CommandHistory,""¶"")
+|    join aid  [search UserName=""*"" ] 
+| table _time ComputerName ApplicationName UserName CommandCount_decimal Commands CommandHistory LocalAddressIP4 aip aid
+"
+Connections to a specific subnet and port counted by the remote IP where the count is low,"RemoteAddressIP4=10.0.0.0/8 RemotePort_decimal=445 
+| stats values(LocalAddressIP4) count by RemoteAddressIP4| where count <4 | sort – count"
+filename versions,"event_simpleName=PeVersion* AND FileName=""iexplore.exe""
+| dedup SHA256HashData
+| table ComputerName FileName FileVersion SHA256HashData"
+Agent Versions in environment,"earliest=-7d event_simpleName=SensorHeartbeat aid=* ComputerName=*
+| lookup aid_master aid OUTPUT AgentVersion
+| eval timestamp=strftime(timestamp/1000, ""%Y-%m-%d %H:%M:%S.%3N %Z"")
+| stats earliest(timestamp) by AgentVersion, aid, ComputerName"
+Enumerate RDP logins (change numeric for different login types),"event_platform=Win event_simpleName=UserLogon LogonType_decimal=10
+| stats dc(UserName) as UserCount values(UserName) values(ComputerName) by aid
+| where UserCount > 1"
+Scheduled task creation,"""schtasks.exe /Create"" AND NOT (""microsoft"" OR ""robustify"" OR ""roundpeg"" OR ""datacap"")
+| table ComputerName CommandLine _time"
+Information on mounted volumes,"event_simpleName=RemovableMediaVolumeMounted 
+| eval UTC=strftime(_time, ""%a ----> %I:%M %p"") 
+| rename timestamp AS Time, ""Agent IP"" AS ""External IP"", ""LocalAddressIP4"" AS ""Local IP"", ComputerName AS Machine, VolumeDriveLetter AS ""Drive Letter"", VolumeName AS ""Volume Name"" 
+|table Time UTC Machine ""External IP"" ""Local IP"" ""Drive Letter"" ""Volume Name"""
+Metasploit installations,"metasploit NOT (*metasploit*.pcap OR *metasploit*.mime OR *.nse)
+|  stats values(CommandLine) values(ImageFileName) by ComputerName, aip"
+Mimikatz / Powerkatz instances,(mimikatz OR powerkatz) | stats  values(CommandLine) values(ImageFileName) by ComputerName
+WannaCry Detections,"mssecsvc.exe OR mssecsvr.exe
+| rename aip AS ""IP Address""
+| table ComputerName ""IP Address"" LocalIP CommandLine ImageFileName TargetFileName _time
+| dedup ComputerName"
+External Drive Mapping Events,"event_simpleName=RemovableMediaVolumeMounted 
+| eval UTC=strftime(_time, ""%H:%M"") 
+| eval PST=(_time - 28800) 
+|eval PST=strftime(PST, ""%a ----> %I:%M %p"") 
+| rename timestamp AS Time, ""Agent IP"" AS ""External IP"", ""LocalAddressIP4"" AS ""Local IP"", ComputerName AS Machine, VolumeDriveLetter AS ""Drive Letter"", VolumeName AS ""Volume Name"" 
+|table Time PST Machine ""External IP"" ""Local IP"" ""Drive Letter"" ""Volume Name"""
+Check Channel File to see if host updated last change,"aid=7e3ebf636dd7458b7b4ba62aa65f0552 event_simpleName=LFODownloadConfirmation
+| table TargetFileName timestamp _time
+| dedup TargetFileName"
+Quick query for detection metrics,"Event_DetectionSummaryEvent
+| rename AgentIdString as aid
+| lookup aid_master.csv aid OUTPUT ComputerName, Version, PointerSize, ProductType
+| stats latest(ComputerName) as ComputerName, latest(Version) as Version, last(PointerSize) as PointerSize, values(ProductType) as ProductType count by aid
+| eval Arch=case(PointerSize==8, ""64 bit"", PointerSize==4, ""32 bit"", true(), ""UNK"")
+| eval ProductType=case(ProductType = ""1"",""Workstation"", ProductType = ""2"",""Domain Controller"", ProductType = ""3"",""Server"", 1=1, ""Server"") 
+| table ComputerName, Version, Arch, ProductType, count
+| sort - count"
+Check items that would be blocked detectable by platform,"earliest=-30d ComputerName=* ExternalApiType=Event_DetectionSummaryEvent 
+| stats count(ComputerName) AS detectCount by FileName CommandLine  DetectName Tactic Technique Objective PatternDispositionDescription 
+| sort - detectCount"
+Certutil Invocation,"""certutil"" AND ("" -decode"" OR "" -urlcache"")
+| table ComputerName CommandLine ImgaeFileName TargetFileName
+| dedup ComputerName"
+CMD Invocations,"""cmd /c"" AND NOT ( saxon OR perfharness OR solr OR kafka)
+| regex CommandLine=""\b(?!169\.254\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}\b""
+| rename _time AS Time
+| stats values(CommandLine) by ComputerName"
+Netcat / Socat Invocations,"""/nc -"" OR ""socat""
+| regex CommandLine=""\b(?!127\.0\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}\b""
+| rename _time AS Time
+| stats values(CommandLine) by ComputerName"
