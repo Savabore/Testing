@@ -122,7 +122,7 @@ Administrator:500:EXAMPLEb51404eeaad3b435b51404ee:EXAMPLE6ae931b73c59d7e0c089c0:
 
 ## Lateral movement
 
-This test starts at the conclusion of [Phase 1](https://github.com/blumirabrian/endpoint-detection-methology/blob/main/msf/MSF-Phase-1.md) complete that test first before starting Phase 2.
+This test starts at the conclusion of Phase 1 complete that test first before starting Phase 2.
 
 For this test we will move laterally using the PsExec module in metasploit. We are using an assume breach methodology so run test with a user that has administrative permissions to the test user or is domain admin on the testing domain.
 
