@@ -142,8 +142,6 @@ msf6 exploit(windows/smb/psexec) > exploit -j
 ```
 Upon successful execution of this test you should get a new meterpreter session on the server.
 
-![Lateral Session](https://raw.githubusercontent.com/blumirabrian/endpoint-detection-methology/main/msf/edr9.png "Lateral Session")
-
 ## Process Injection
 ```
 msf6 exploit(multi/handler) > sessions -i N
