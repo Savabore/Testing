@@ -1,6 +1,15 @@
-# Phase 1 Testing
+# Under Construction - Phase 1 Testing
 
-## Discovery
+## Initial Access
+
+Demostrate initial access
+
+```
+<initial access example>
+```
+Multiple vectors should be evaluated in order to baseline the readiness of the confiured environment. An active external attack (Buffer overflow, command injection, etc), an external passive attack (watering hole / driveby), trojanized attack (URLs and attachment from email, files on removable media), trust relationship (3rd party access).
+
+## Execution
 
 Demostrate scanning, recon and targeting activity external to the system
 
@@ -13,16 +22,18 @@ You may also try different browsers as that can result in different checks and h
 
 If all files are blocked you can either allow the downloads manaually in the security stack or conclude the test.
 
+## Persistance
 
-## Initial Access
-
-Demostrate initial access
+Demostrate scanning, recon and targeting activity external to the system
 
 ```
-<initial access example>
+<recond examples>
 ```
 
-Run the three test files from 1 to 3 by simply double clicking, and record the detection results. It is recommended to right click and run at least one of the payloads as Administrator to facilitate later testing for privesc.
+On target machine download the three payloads, record if any alerts fire for this activity. 
+You may also try different browsers as that can result in different checks and hooks used by the endpoint software.
+
+If all files are blocked you can either allow the downloads manaually in the security stack or conclude the test.
 
 ## Discovery
 
