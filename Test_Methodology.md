@@ -4,9 +4,31 @@
 
 Demostrate initial access
 
+### Shellcode Injection
 ```
 <initial access example>
 ```
+
+### Jump-oriented programming (JOP)
+```
+<initial access example>
+```
+
+### Return-oriented Programming (ROP)
+```
+<initial access example>
+```
+
+### Call-oriented programming (COP)
+```
+<initial access example>
+```
+
+### Counterfeit object-oriented programming (COOP)
+```
+<initial access example>
+```
+
 Multiple vectors should be evaluated in order to baseline the readiness of the confiured environment. An active external attack (Buffer overflow, command injection, etc), an external passive attack (watering hole / driveby), trojanized attack (URLs and attachment from email, files on removable media), trust relationship (3rd party access).
 
 ## Execution
